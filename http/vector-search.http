@@ -1,0 +1,136 @@
+### ==============================================================================
+### PgVector + Spring Boot 向量检索 API 测试脚本 (IntelliJ HTTP Client)
+### 提示：在右上角选择运行环境（local / docker / dev），或直接点击绿色箭头执行
+### ==============================================================================
+
+@baseUrl = {{baseUrl}}
+
+### 1. 健康检查与系统指标 (Spring Boot Actuator Health)
+# @name actuatorHealth
+GET {{baseUrl}}/actuator/health
+Accept: application/json
+
+> {%
+  client.test("健康检查状态应为 UP", function() {
+    client.assert(response.status === 200, "Response status is not 200");
+    client.assert(response.body.status === "UP", "Service status is not UP");
+  });
+%}
+
+### -----------------------------------------------------------------------------
+
+### 2. 批量生成并灌入模拟测试向量数据 (Mock Batch Insert)
+# @name mockBatchInsert
+POST {{baseUrl}}/api/vectors/mock-batch?count=1000
+Accept: application/json
+
+> {%
+  client.test("批量插入成功并返回插入统计", function() {
+    client.assert(response.status === 200, "Response status is not 200");
+    client.assert(response.body.insertedCount === 1000, "Inserted count mismatch");
+    client.log("当前数据库总文档数: " + response.body.totalCount);
+  });
+%}
+
+### -----------------------------------------------------------------------------
+
+### 3. 基础向量相似度检索 (默认余弦相似度 Cosine Distance)
+# @name searchDefault
+POST {{baseUrl}}/api/vectors/search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "metric": "COSINE",
+  "minSimilarity": 0.0,
+  "limit": 5
+}
+
+> {%
+  client.test("向量检索返回成功且结果列表不为空", function() {
+    client.assert(response.status === 200, "Response status is not 200");
+    client.assert(response.body.length > 0, "Search result should not be empty");
+  });
+%}
+
+### -----------------------------------------------------------------------------
+
+### 4. 混合过滤检索 (Hybrid Search: 标量字段过滤 + 向量相似度排序)
+# @name searchHybrid
+POST {{baseUrl}}/api/vectors/search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "category": "AI技术",
+  "minViewCount": 500,
+  "metric": "COSINE",
+  "minSimilarity": 0.1,
+  "limit": 5
+}
+
+> {%
+  client.test("混合检索条件过滤有效", function() {
+    client.assert(response.status === 200, "Response status is not 200");
+    response.body.forEach(function(item) {
+      client.assert(item.category === "AI技术", "Category should match 'AI技术'");
+      client.assert(item.viewCount >= 500, "viewCount should be >= 500");
+    });
+  });
+%}
+
+### -----------------------------------------------------------------------------
+
+### 5. 欧氏距离检索 (L2 Euclidean Distance)
+# @name searchL2
+POST {{baseUrl}}/api/vectors/search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "metric": "L2",
+  "limit": 5
+}
+
+### -----------------------------------------------------------------------------
+
+### 6. 负内积检索 (Negative Inner Product)
+# @name searchInnerProduct
+POST {{baseUrl}}/api/vectors/search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "metric": "INNER_PRODUCT",
+  "limit": 5
+}
+
+### -----------------------------------------------------------------------------
+
+### 7. 运行 Flat 暴力扫描 vs HNSW 索引检索性能与召回率压测 (Benchmark)
+# @name runBenchmark
+GET {{baseUrl}}/api/vectors/benchmark?iterations=20&topK=10
+Accept: application/json
+
+> {%
+  client.test("基准压测成功并计算召回率", function() {
+    client.assert(response.status === 200, "Response status is not 200");
+    client.log("Flat 平均耗时: " + response.body.flatAvgLatencyMs + " ms");
+    client.log("HNSW 平均耗时: " + response.body.hnswAvgLatencyMs + " ms");
+    client.log("HNSW 平均召回率 (Recall): " + response.body.hnswRecallRate + "%");
+  });
+%}
+
+### -----------------------------------------------------------------------------
+
+### 8. 清空测试数据 (Clear Table)
+# @name clearData
+DELETE {{baseUrl}}/api/vectors/clear
+Accept: application/json
+
+> {%
+  client.test("测试数据清空成功", function() {
+    client.assert(response.status === 200, "Response status is not 200");
+    client.assert(response.body.message === "测试数据已清空", "Clear response mismatch");
+  });
+%}

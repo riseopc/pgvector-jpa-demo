@@ -1,0 +1,81 @@
+name: Java CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.editorconfig'
+      - '.gitignore'
+  pull_request:
+    branches:
+      - main
+      - master
+      - develop
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & Verify (Java 21)
+    runs-on: ubuntu-latest
+
+    # 1. 启动 PostgreSQL 18 (内置 pgvector 扩展) 测试数据库服务容器
+    services:
+      postgres-pgvector:
+        image: riseopc/postgres:18-vector-postgis
+        env:
+          POSTGRES_DB: pgvector_demo
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      # 2. 检出仓库代码
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 3. 配置 JDK 21 并启用 GitHub 官方 Maven 依赖高速缓存 (pom.xml Hash Cache)
+      - name: Set up JDK 21 with Maven Cache
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      # 4. 授予 Maven Wrapper 执行权限
+      - name: Grant Execute Permission for Maven Wrapper
+        run: chmod +x mvnw
+
+      # 5. 执行单元测试 (余弦/欧氏/负内积精度、HNSW基准压测、混合检索)
+      - name: Run Maven Tests
+        env:
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/pgvector_demo
+          SPRING_DATASOURCE_USERNAME: postgres
+          SPRING_DATASOURCE_PASSWORD: postgrespassword
+        run: ./mvnw clean test
+
+      # 6. 打包可执行 JAR
+      - name: Package JAR
+        run: ./mvnw package -DskipTests
+
+      # 7. 上传构建产物 (提供 7 天下载)
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        with:
+          name: pgvector-jpa-demo-jar
+          path: target/*.jar
+          retention-days: 7

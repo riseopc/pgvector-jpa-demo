@@ -1,0 +1,33 @@
+services:
+  # 1. PostgreSQL 18 数据库（内置 pgvector 与 PostGIS 扩展）
+  postgres:
+    image: riseopc/postgres:18-vector-postgis
+    container_name: pgvector-postgres
+    restart: unless-stopped
+    env_file:
+      - pjd.env
+    ports:
+      - "5432:5432"
+    volumes:
+      - .env/data/pg:/var/lib/postgresql
+      - ./src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/init-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-pgvector_demo}"]
+      interval: 10s
+      timeout: 30s
+      retries: 10
+
+  # 2. Spring Boot 向量检索应用服务
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pgvector-jpa-demo-app
+    restart: unless-stopped
+    env_file:
+      - pjd.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8099:8099"
