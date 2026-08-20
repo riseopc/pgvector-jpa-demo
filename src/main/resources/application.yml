@@ -38,6 +38,16 @@ logging:
     org.riseopc: DEBUG
     org.hibernate.SQL: INFO
 
+# Spring Boot Actuator 监控端点配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
 # PgVector 测试相关自定义配置
 pgvector:
   dimension: 1536 # 默认向量维度，例如 OpenAI text-embedding-3-small 为 1536 维
